@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: osrs-arbitrage-db
+    environment:
+      POSTGRES_USER: osrs_user
+      POSTGRES_PASSWORD: osrs_password
+      POSTGRES_DB: osrs_arbitrage
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osrs_user -d osrs_arbitrage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: osrs-arbitrage-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://osrs_user:osrs_password@postgres:5432/osrs_arbitrage
+      ADMIN_API_KEY: dev-admin-key-change-in-production
+      RUNELITE_API_BASE_URL: https://prices.runescape.wiki/api/v1/osrs
+      POLL_INTERVAL_MINUTES: 5
+      API_V1_PREFIX: /api/v1
+      LOG_LEVEL: DEBUG
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  postgres_data:
