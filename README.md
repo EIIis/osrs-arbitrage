@@ -214,6 +214,28 @@ This project is configured for deployment on Render using Docker:
 
 The database will be automatically provisioned via Render's PostgreSQL service.
 
+### Production Deployment Checklist
+
+**IMPORTANT: Before deploying to production, update these environment variables:**
+
+1. **CORS_ORIGINS** - Restrict to your frontend domain
+   - Dev: `["*"]` (allows all origins)
+   - Prod: `["https://your-frontend-domain.com"]`
+   - Why: Prevents unauthorized websites from accessing your API
+
+2. **ADMIN_API_KEY** - Use a secure random key
+   - Dev: `dev-admin-key-change-in-production`
+   - Prod: Generate a cryptographically secure random string
+   - Why: Protects admin endpoints from unauthorized access
+
+3. **LOG_LEVEL** - Reduce verbosity
+   - Dev: `DEBUG`
+   - Prod: `INFO` or `WARNING`
+   - Why: Reduces log noise and prevents information leakage
+
+4. **Database credentials** - Ensure strong passwords
+   - Render's managed PostgreSQL uses secure credentials by default
+
 ## System Architecture
 
 ### Component Diagram
@@ -376,6 +398,13 @@ Think of it like a restaurant: The API layer is the waiter taking orders, the se
 - Added data seeding utility for 5 initial items
 - Configured for Render deployment with render.yaml
 - Updated comprehensive documentation with UML diagrams
+- **Database Setup Complete**:
+  - Fixed CORS_ORIGINS env var format for pydantic list parsing
+  - Resolved PostgreSQL port conflict (stopped local instance)
+  - Generated and applied initial database migration
+  - Created all tables with proper indexes and foreign key relationships
+  - Successfully seeded 5 initial items (Coal, Iron ore, Iron bar, Mithril ore, Mithril bar)
+- **Production Notes**: Added production deployment checklist with security reminders for CORS, API keys, and logging
 
 ### 2025-12-09
 

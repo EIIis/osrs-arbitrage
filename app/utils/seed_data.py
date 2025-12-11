@@ -10,6 +10,9 @@ import asyncio
 from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.tracked_item import TrackedItem
+# Import other models so SQLAlchemy can resolve relationships
+from app.models.price_snapshot import PriceSnapshot  # noqa: F401
+from app.models.arbitrage_snapshot import ArbitrageSnapshot  # noqa: F401
 
 
 # Initial items to track
