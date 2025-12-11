@@ -4,7 +4,7 @@ A production-grade FastAPI backend service for identifying profitable trading op
 
 ## Project Status
 
-**Current Phase:** In Development (Phase 5/10)
+**Current Phase:** In Development (Phase 6/10)
 
 **What's Working:**
 
@@ -12,10 +12,11 @@ A production-grade FastAPI backend service for identifying profitable trading op
 - Database models and migrations (Alembic)
 - Pydantic schemas for API validation
 - RuneLite API client for price fetching
+- Full service layer with business logic (item, price, arbitrage services)
+- Custom exception handling
 
 **In Progress:**
 
-- Service layer (business logic)
 - API endpoints
 - Background price polling
 - Testing suite
@@ -389,7 +390,7 @@ Think of it like a restaurant: The API layer is the waiter taking orders, the se
 
 ### 2025-12-10
 
-- **Phase 1-4 Complete**: Core infrastructure implemented
+- **Phase 1-5 Complete**: Core infrastructure and service layer implemented
 - Set up complete project structure with Docker and docker-compose
 - Implemented database models: TrackedItem, PriceSnapshot, ArbitrageSnapshot
 - Configured Alembic for async migrations with auto-detection
@@ -404,6 +405,13 @@ Think of it like a restaurant: The API layer is the waiter taking orders, the se
   - Generated and applied initial database migration
   - Created all tables with proper indexes and foreign key relationships
   - Successfully seeded 5 initial items (Coal, Iron ore, Iron bar, Mithril ore, Mithril bar)
+- **Phase 5 - Services Complete**:
+  - Custom exception classes for error handling (ItemAlreadyExistsError, ItemNotFoundError, etc.)
+  - item_service.py: CRUD operations for tracked items
+  - price_service.py: Price snapshot management with null handling
+  - arbitrage_service.py: Profit margin calculations with 2% GE tax
+  - All services use async/await with exception-based error handling
+  - Query limits implemented (default 10-100, max 1000)
 - **Production Notes**: Added production deployment checklist with security reminders for CORS, API keys, and logging
 
 ### 2025-12-09
