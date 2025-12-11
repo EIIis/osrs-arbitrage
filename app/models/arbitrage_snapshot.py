@@ -19,8 +19,8 @@ class ArbitrageSnapshot(Base):
     # Foreign key to tracked_items (references item_id directly)
     item_id = Column(Integer, ForeignKey("tracked_items.item_id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Time window ('1m' or '5m')
-    window = Column(String(2), nullable=False)
+    # Time window ('latest_price' or '5m')
+    window = Column(String(20), nullable=False)
 
     # Price data used in calculation (stored for reference)
     avg_high_price = Column(Integer, nullable=False)

@@ -8,7 +8,7 @@ class PriceSnapshot(Base):
     """
     Represents a point-in-time capture of an item's Grand Exchange prices.
 
-    Snapshots are created every 5 minutes for both 1m and 5m time windows.
+    Snapshots are created every 5 minutes for both latest_price and 5m time windows.
     Price values can be null if the RuneLite API returns null data.
     """
     __tablename__ = "price_snapshots"
@@ -19,8 +19,8 @@ class PriceSnapshot(Base):
     # Foreign key to tracked_items (references item_id directly)
     item_id = Column(Integer, ForeignKey("tracked_items.item_id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # Time window ('1m' or '5m')
-    window = Column(String(2), nullable=False)
+    # Time window ('latest_price' or '5m')
+    window = Column(String(20), nullable=False)
 
     # Price data (in GP - gold pieces)
     # Can be null if API returns null

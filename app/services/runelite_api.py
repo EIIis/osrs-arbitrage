@@ -64,43 +64,8 @@ async def fetch_latest_prices() -> Dict[int, Dict[str, Any]]:
         raise RuneLiteAPIError(f"Unexpected error: {str(e)}")
 
 
-async def fetch_1m_prices() -> Dict[int, Dict[str, Any]]:
-    """
-    Fetch 1-minute average prices for all items.
-
-    Returns:
-        Dictionary mapping item_id -> price data
-        Example: {453: {"avgHighPrice": 180, "highPriceVolume": 100, "avgLowPrice": 175, ...}}
-
-    Raises:
-        RuneLiteAPIError: If API request fails
-    """
-    url = f"{settings.RUNELITE_API_BASE_URL}/1m"
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            logger.debug(f"Fetching 1m prices from {url}")
-            response = await client.get(url)
-            response.raise_for_status()
-
-            data = response.json()
-
-            # The API returns {"data": {item_id: {...}, ...}}
-            if "data" in data:
-                return data["data"]
-            else:
-                logger.error(f"Unexpected API response format: {data}")
-                return {}
-
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error fetching 1m prices: {e.response.status_code}")
-        raise RuneLiteAPIError(f"HTTP {e.response.status_code}: {e.response.text}")
-    except httpx.RequestError as e:
-        logger.error(f"Request error fetching 1m prices: {str(e)}")
-        raise RuneLiteAPIError(f"Request failed: {str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected error fetching 1m prices: {str(e)}")
-        raise RuneLiteAPIError(f"Unexpected error: {str(e)}")
+# Note: fetch_1m_prices() was removed because the RuneLite API does not have a /1m endpoint.
+# Use fetch_latest_prices() for instant prices or fetch_5m_prices() for 5-minute averages.
 
 
 async def fetch_5m_prices() -> Dict[int, Dict[str, Any]]:
@@ -149,6 +114,8 @@ def extract_price_data(item_data: Dict[str, Any], window: str) -> Optional[Dict[
     Technical Explanation:
     Normalizes the API response format into a consistent structure. Handles
     null/missing values gracefully by returning None for missing fields.
+    The 'latest_price' window uses different field names (high/low) compared
+    to '5m' (avgHighPrice/avgLowPrice), so we normalize them here.
 
     Simple Explanation:
     Takes the messy data from the API and organizes it into a clean format
@@ -156,7 +123,7 @@ def extract_price_data(item_data: Dict[str, Any], window: str) -> Optional[Dict[
 
     Args:
         item_data: Price data from API for a single item
-        window: '1m' or '5m'
+        window: 'latest_price' or '5m'
 
     Returns:
         Dictionary with normalized price data, or None if data is invalid
@@ -166,12 +133,22 @@ def extract_price_data(item_data: Dict[str, Any], window: str) -> Optional[Dict[
 
     try:
         # Extract prices based on window type
-        if window == "1m" or window == "5m":
+        if window == "5m":
+            # 5m endpoint returns: avgHighPrice, avgLowPrice, highPriceVolume, lowPriceVolume
             return {
                 "avg_high_price": item_data.get("avgHighPrice"),
                 "avg_low_price": item_data.get("avgLowPrice"),
                 "high_price_volume": item_data.get("highPriceVolume"),
                 "low_price_volume": item_data.get("lowPriceVolume"),
+            }
+        elif window == "latest_price":
+            # latest endpoint returns: high, low, highTime, lowTime (no volume data)
+            # We normalize to the same field names as 5m for consistency
+            return {
+                "avg_high_price": item_data.get("high"),
+                "avg_low_price": item_data.get("low"),
+                "high_price_volume": None,  # Latest endpoint doesn't provide volume
+                "low_price_volume": None,
             }
         else:
             logger.warning(f"Unknown window type: {window}")

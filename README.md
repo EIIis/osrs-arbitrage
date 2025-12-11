@@ -4,7 +4,7 @@ A production-grade FastAPI backend service for identifying profitable trading op
 
 ## Project Status
 
-**Current Phase:** In Development (Phase 5/10)
+**Current Phase:** Phase 9 (Testing)
 
 **What's Working:**
 
@@ -12,13 +12,15 @@ A production-grade FastAPI backend service for identifying profitable trading op
 - Database models and migrations (Alembic)
 - Pydantic schemas for API validation
 - RuneLite API client for price fetching
+- Full service layer (item, price, arbitrage)
+- REST API endpoints (items, arbitrage, admin)
+- Background price polling (every 5 minutes)
+- Health monitoring with scheduler status
 
 **In Progress:**
 
-- Service layer (business logic)
-- API endpoints
-- Background price polling
 - Testing suite
+- Documentation refinements
 
 ## What is Arbitrage?
 
@@ -28,14 +30,19 @@ Arbitrage is the practice of taking advantage of price differences in markets. I
 **Simple Explanation:**
 Think of it like buying something on sale and then reselling it for more money. This tool helps find items in the game where you can do that profitably.
 
-## How It Will Work
+## How It Works
 
-The tool will:
+**Technical Explanation:**
+This backend periodically polls the RuneLite x OSRS Wiki Real-time Prices API every 5 minutes to fetch instant (`latest_price`) and 5-minute average prices for tracked items. It stores historical price snapshots and precomputes arbitrage opportunities using the formula:
 
-1. Check current prices of items on the Grand Exchange
-2. Find items where you can buy low and sell high
-3. Calculate your actual profit (accounting for the game's trading tax)
-4. Show you the best opportunities
+```
+profit_margin = ((avg_high_price - avg_low_price - (0.02 * avg_high_price)) / avg_low_price) * 100
+```
+
+The precomputed results are stored in PostgreSQL for fast retrieval via REST API endpoints.
+
+**Simple Explanation:**
+Every 5 minutes, the app checks the prices of OSRS items you're tracking. It calculates how much profit you could make by buying low and selling high (after accounting for the 2% Grand Exchange tax). These profit calculations are saved so the API can show you the best opportunities instantly.
 
 ## Quick Start
 
@@ -57,9 +64,6 @@ cp .env.example .env
 
 # Start all services
 docker compose up
-
-# In another terminal, seed initial data
-docker compose exec api python -m app.utils.seed_data
 
 # API will be available at http://localhost:8000
 # API docs at http://localhost:8000/docs
@@ -89,20 +93,6 @@ python -m app.utils.seed_data
 uvicorn app.main:app --reload
 ```
 
-## How It Works
-
-**Technical Explanation:**
-This backend periodically polls the RuneLite x OSRS Wiki Real-time Prices API every 5 minutes to fetch 1-minute and 5-minute average prices for tracked items. It stores historical price snapshots and precomputes arbitrage opportunities using the formula:
-
-```
-profit_margin = ((avg_high_price - avg_low_price - (0.02 * avg_high_price)) / avg_low_price) * 100
-```
-
-The precomputed results are stored in PostgreSQL for fast retrieval via REST API endpoints.
-
-**Simple Explanation:**
-Every 5 minutes, the app checks the prices of OSRS items you're tracking. It calculates how much profit you could make by buying low and selling high (after accounting for the 2% Grand Exchange tax). These profit calculations are saved so the API can show you the best opportunities instantly.
-
 ## Features
 
 - **Real-time Price Tracking**: Fetches latest GE prices every 5 minutes
@@ -111,22 +101,33 @@ Every 5 minutes, the app checks the prices of OSRS items you're tracking. It cal
 - **Null Price Handling**: Gracefully handles missing data from the API
 - **Admin Controls**: Protected endpoints for adding/removing items
 - **Docker Ready**: Full containerization for easy deployment
-- **Production Grade**: Async/await, proper error handling, logging, and testing
+- **Production Grade**: Async/await, proper error handling, logging
 
-## API Endpoints (Planned)
+## API Endpoints
 
 ### Public Endpoints
 
-- `GET /api/v1/items` - List all tracked items
-- `GET /api/v1/arbitrage/top` - Top arbitrage opportunities
-- `GET /api/v1/arbitrage/{item_id}` - Arbitrage history for specific item
-- `GET /api/v1/items/{item_id}/history` - Price history for specific item
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/items` | List all tracked items |
+| GET | `/api/v1/items/{item_id}/history` | Price history for specific item |
+| GET | `/api/v1/arbitrage/top` | Top arbitrage opportunities |
+| GET | `/api/v1/arbitrage/{item_id}` | Arbitrage history for specific item |
+| GET | `/health` | Health check with scheduler status |
+| GET | `/docs` | Swagger UI documentation |
+
+**Query Parameters:**
+- `window`: `latest_price` or `5m` (default: `5m`)
+- `limit`: Number of results (default varies by endpoint)
+- `min_margin`: Minimum percent margin filter (arbitrage endpoints)
 
 ### Admin Endpoints (require X-API-Key header)
 
-- `POST /api/v1/items` - Add item to tracking
-- `DELETE /api/v1/items/{item_id}` - Remove item from tracking
-- `POST /api/v1/admin/refresh` - Manually trigger price fetch
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/items` | Add item to tracking |
+| DELETE | `/api/v1/items/{item_id}` | Remove item from tracking |
+| POST | `/api/v1/admin/refresh` | Manually trigger price fetch |
 
 ## Technology Stack
 
@@ -289,7 +290,7 @@ graph TB
     Poller --> PriceSvc
     Poller --> ArbSvc
 
-    APISvc -->|GET /1m, /5m| RuneLite
+    APISvc -->|GET /latest, /5m| RuneLite
 
     Models -->|AsyncPG| PG
 ```
@@ -311,20 +312,20 @@ sequenceDiagram
     Poller->>DB: Get all tracked items
     DB-->>Poller: [item_ids]
 
-    Poller->>API: GET /1m prices
-    API-->>Poller: 1m price data
+    Poller->>API: GET /latest prices
+    API-->>Poller: latest price data
 
     Poller->>API: GET /5m prices
     API-->>Poller: 5m price data
 
     loop For each tracked item
-        Poller->>PriceSvc: Store 1m snapshot
+        Poller->>PriceSvc: Store latest_price snapshot
         PriceSvc->>DB: INSERT price_snapshot
 
         Poller->>PriceSvc: Store 5m snapshot
         PriceSvc->>DB: INSERT price_snapshot
 
-        Poller->>ArbSvc: Compute arbitrage (1m)
+        Poller->>ArbSvc: Compute arbitrage (latest_price)
         ArbSvc->>DB: Get latest non-null prices
         DB-->>ArbSvc: price data
         ArbSvc->>ArbSvc: Calculate margin
@@ -355,7 +356,7 @@ erDiagram
     PRICE_SNAPSHOTS {
         int id PK
         int item_id FK "ON DELETE CASCADE"
-        string window "1m or 5m"
+        string window "latest_price or 5m"
         int avg_high_price "nullable"
         int avg_low_price "nullable"
         int high_price_volume "nullable"
@@ -366,7 +367,7 @@ erDiagram
     ARBITRAGE_SNAPSHOTS {
         int id PK
         int item_id FK "ON DELETE CASCADE"
-        string window "1m or 5m"
+        string window "latest_price or 5m"
         int avg_high_price
         int avg_low_price
         int spread "high - low"
@@ -387,27 +388,4 @@ Think of it like a restaurant: The API layer is the waiter taking orders, the se
 
 ## Changelog
 
-### 2025-12-10
-
-- **Phase 1-4 Complete**: Core infrastructure implemented
-- Set up complete project structure with Docker and docker-compose
-- Implemented database models: TrackedItem, PriceSnapshot, ArbitrageSnapshot
-- Configured Alembic for async migrations with auto-detection
-- Created Pydantic schemas for request/response validation
-- Built RuneLite API client with error handling and null data support
-- Added data seeding utility for 5 initial items
-- Configured for Render deployment with render.yaml
-- Updated comprehensive documentation with UML diagrams
-- **Database Setup Complete**:
-  - Fixed CORS_ORIGINS env var format for pydantic list parsing
-  - Resolved PostgreSQL port conflict (stopped local instance)
-  - Generated and applied initial database migration
-  - Created all tables with proper indexes and foreign key relationships
-  - Successfully seeded 5 initial items (Coal, Iron ore, Iron bar, Mithril ore, Mithril bar)
-- **Production Notes**: Added production deployment checklist with security reminders for CORS, API keys, and logging
-
-### 2025-12-09
-
-- Initial project setup
-- Created project documentation (README.md and CLAUDE.md)
-- Defined project scope and goals
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
