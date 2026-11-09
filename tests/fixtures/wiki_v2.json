@@ -1,0 +1,7 @@
+{
+  "mapping": [{"id":453,"name":"Coal","members":false,"limit":13000},{"id":440,"name":"Iron ore","members":false,"limit":0}],
+  "latest": {"data":{"453":{"high":121,"low":101,"highTime":1794268790,"lowTime":1794268790}}},
+  "5m": {"timestamp":1794268500,"data":{"453":{"avgHighPrice":120.50,"avgLowPrice":100.25,"highPriceVolume":1000,"lowPriceVolume":900}}},
+  "1h": {"timestamp":1794265200,"data":{"453":{"avgHighPrice":120.50,"avgLowPrice":100.25,"highPriceVolume":1000,"lowPriceVolume":900}}},
+  "timeseries": {"itemId":453,"startTimestamp":1794267600,"endTimestamp":1794268800,"timestep":600,"data":[{"timestamp":1794267600,"avgHighPrice":120.50,"avgLowPrice":100.25,"highPriceVolume":1000,"lowPriceVolume":900},{"timestamp":1794268200,"avgHighPrice":null,"avgLowPrice":null,"highPriceVolume":0,"lowPriceVolume":0}]}
+}

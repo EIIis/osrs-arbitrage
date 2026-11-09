@@ -1,0 +1,15 @@
+[Unit]
+Description=Personal OSRS Discord flipping assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/osrs-arbitrage
+ExecStart=/absolute/path/to/osrs-arbitrage/.venv/bin/python -m app run
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

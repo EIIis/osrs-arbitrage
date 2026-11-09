@@ -63,3 +63,8 @@ app/db/migrations/versions/__pycache__/
 .claude/
 DONOTREAD.txt
 CLAUDE.md
+# Personal data, SQLite journals, backups and exports
+data/
+*.sqlite3-*
+*.sqlite3.lock
+.ruff_cache/

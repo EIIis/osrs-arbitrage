@@ -1,4 +1,5 @@
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-# Create SQLAlchemy Base class for all models to inherit from
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass

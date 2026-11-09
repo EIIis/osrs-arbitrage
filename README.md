@@ -1,421 +1,205 @@
-# OSRS Arbitrage Tool
+# Personal OSRS flipping assistant
 
-A production-grade FastAPI backend service for identifying profitable trading opportunities in the Old School RuneScape Grand Exchange.
+A single-user Discord bot for recording completed Grand Exchange purchases and sales,
+watching your holdings, suggesting selling targets, and discovering possible flips.
+Runs locally while your PC is on; the same process can later run on a host with persistent storage.
 
-## Project Status
+- **Quick:** session-length flips, using 24 hours of history.
+- **Swing:** hours to seven days, using seven days of history.
+- **Hold:** seven to thirty days, using thirty days of history.
 
-**Current Phase:** In Development (Phase 6/10)
+The bot proposes **offer prices**, not guaranteed fills. It separates a patient sell-offer
+estimate from an immediate-sale valuation. It never places in-game orders or records a
+sale unless you explicitly report one. Recommendations use explainable statistical rules,
+not AI predictions. They are initial heuristics, not a validated profitable strategy.
 
-**What's Working:**
+## Local setup
 
-- Complete project structure with Docker support
-- Database models and migrations (Alembic)
-- Pydantic schemas for API validation
-- RuneLite API client for price fetching
-- Full service layer with business logic (item, price, arbitrage services)
-- Custom exception handling
+Requires Python 3.12 and internet access. PostgreSQL, a public web server, and Docker are optional/unneeded for local use.
 
-**In Progress:**
-
-- API endpoints
-- Background price polling
-- Testing suite
-
-## What is Arbitrage?
-
-**Technical Explanation:**
-Arbitrage is the practice of taking advantage of price differences in markets. In OSRS, this involves buying items from the Grand Exchange at a lower price and selling them at a higher price to generate profit.
-
-**Simple Explanation:**
-Think of it like buying something on sale and then reselling it for more money. This tool helps find items in the game where you can do that profitably.
-
-## How It Will Work
-
-The tool will:
-
-1. Check current prices of items on the Grand Exchange
-2. Find items where you can buy low and sell high
-3. Calculate your actual profit (accounting for the game's trading tax)
-4. Show you the best opportunities
-
-## Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose (recommended)
-- OR Python 3.11+ and PostgreSQL
-
-### Option 1: Docker (Recommended)
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd osrs-arbitrage
-
-# Set up environment variables
+```sh
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt -c requirements.lock
 cp .env.example .env
-# Edit .env if needed (defaults should work for local dev)
-
-# Start all services
-docker compose up
-
-# In another terminal, seed initial data
-docker compose exec api python -m app.utils.seed_data
-
-# API will be available at http://localhost:8000
-# API docs at http://localhost:8000/docs
+# Fill in the Discord token and IDs; customize WIKI_USER_AGENT.
+python -m app run
 ```
 
-### Option 2: Local Python Environment
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1`; copy the example with
+`Copy-Item .env.example .env`. WSL uses the Linux commands above. Run commands from the project directory.
+The database is created and migrated automatically on startup. `DB_PATH` always refers to SQLite;
+legacy `DATABASE_URL` is ignored. A second instance using the same database exits immediately.
+Stop with Ctrl+C. Network reconnects do not start duplicate polling loops.
 
-```bash
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+The old PostgreSQL database is not imported, modified, or deleted. This release starts fresh.
 
-# Install dependencies
-pip install -r requirements.txt
+## Create the private Discord bot
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your PostgreSQL connection string
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and create an application.
+2. Open **Bot**, create/reset the token, and put it in `DISCORD_TOKEN` in `.env`. Disable public installation if available.
+3. Leave privileged intents, including Message Content, disabled.
+4. Install to your own server using the `bot` and `applications.commands` scopes. Give it **View Channel**, **Send Messages**, **Embed Links**, **Attach Files**, and **Read Message History** in your private channel. Administrator is unnecessary.
+5. Enable Developer Mode in Discord settings. Copy your user ID, server ID, and private text-channel ID into `.env`.
+6. Start the bot. Commands sync only to the configured server. Run `/status` in the configured channel.
 
-# Run migrations
-alembic upgrade head
+Every command, autocomplete, button, and submitted form is owner-restricted. The bot refuses
+commands in other channels, servers, and DMs. Channel privacy itself is managed through Discord permissions.
+Only holding alerts mention you. New suggestions appear when requested with `/suggest`.
+No Discord messages are sent by the test suite.
 
-# Seed initial data
-python -m app.utils.seed_data
+## Typical workflow
 
-# Start development server
-uvicorn app.main:app --reload
+```text
+/settings budget:10m profile:balanced
+/suggest mode:quick
+/buy item:Coal quantity:10k price:130 mode:quick
+/holdings
+/position position_id:1 show_chart:True
+/target set position_id:1 net_percent:2
+/sell position_id:1 quantity:5k price:140
+/history
 ```
 
-## How It Works
+Pick item names from autocomplete or enter an exact item ID. Quantity and GP fields accept
+whole values, commas, and exact `k`/`m`/`b` suffixes: `1.5k` is 1,500; `1.5` GP is rejected.
+Purchase and sale prices are **per item, before selling tax**. Optional times use ISO format,
+for example `2026-11-09T14:30-06:00`; times without an offset use `TIMEZONE`.
 
-**Technical Explanation:**
-This backend periodically polls the RuneLite x OSRS Wiki Real-time Prices API every 5 minutes to fetch 1-minute and 5-minute average prices for tracked items. It stores historical price snapshots and precomputes arbitrage opportunities using the formula:
+Each purchase is a separate numbered position. Sales must reference that position and may be
+partial. The ledger rejects overselling and sales predating the purchase. Realized profit uses
+actual recorded sale prices; estimated profit describes only the remaining quantity.
+The saved suggestion budget is manually maintained and is not your inferred in-game bank balance.
 
+| Command | Purpose |
+|---|---|
+| `/buy`, `/sell` | Record completed purchases and full/partial sales |
+| `/holdings`, `/position`, `/history` | Open holdings, position details, and realized profit |
+| `/target set`, `/target reset` | Set a price/net ROI target or explicitly recalculate one |
+| `/risk` | Set a position's immediate-sale loss warning threshold |
+| `/snooze` | Mute a position for 1 minute to 30 days, then recheck |
+| `/trade edit`, `/trade void` | Correct an entry or confirm a void; records remain auditable |
+| `/suggest` | Up to five independently budgeted opportunities in the selected mode/profile |
+| `/item` | Historical analysis and an optional price/volume chart |
+| `/watch` | Add/remove/list items to monitor beyond your holdings |
+| `/favorite`, `/exclude` | Prioritize analysis or exclude an item from discovery |
+| `/settings`, `/status` | Budget/profile preferences, data freshness, and recent failures |
+
+`/trade` identifies buys by position ID and sales by sale ID. A purchase with active sales cannot
+be voided until those sales are voided. Purchase corrections cannot reduce quantity below units
+already sold or move the purchase after a sale. Editing a purchase recalculates profit without
+silently changing the existing target.
+
+A purchase can be recorded during a market-data outage. If history is unavailable or does not
+support a profitable target, the position has no automatic target. Supply your own target or
+use `/target reset` after history is prepared. Targets never move downward automatically.
+Forms expire after five minutes, confirmation prompts after two, and paginated views after three.
+Use a fresh command if a form or old position button is no longer valid.
+
+## Recommendations and alerts
+
+See [the analysis specification](docs/analysis.md) for exact windows, filters, and defaults.
+
+The bot bulk-fetches current market data and gradually prepares history for holdings first,
+then watched/favorite items, then up to twenty shortlisted candidates per mode. Each history
+request is serialized at least one second apart. Commands and background tasks share the cache.
+A cold start can take several minutes. `/suggest` shows only prepared candidates; no results
+means the bot has not found a qualifying item, not that it should relax its filters.
+
+Alerts require two distinct, consecutive completed five-minute buckets. Repeated polling of the
+same bucket does not count twice. Targets trigger once per revision. Warnings have per-mode
+cooldowns. Snoozing explicitly rearms the target after expiry. Closing a position cancels pending alerts.
+Missing/stale prices suppress actionable notifications. Cached values may still appear with their age.
+
+Alert state and delivery attempts survive restarts. Transient Discord failures retry with backoff;
+uncertain sends are checked against the last 100 channel messages using a stable reference.
+A rare duplicate remains possible if delivery is ambiguous and its message cannot be found.
+Permanent permission failures stop retries and appear in `/status`: fix the permissions, then
+reset the target or snooze the position to rearm it. Bot buttons on historical alerts validate
+that their position/revision is still current.
+
+Price charts are generated on request and show missing observations as gaps. No predictive
+bands or interpolated fake prices are shown.
+
+## Data and backups
+
+The local database defaults to `data/osrs.sqlite3`. It includes purchases, sales, targets,
+preferences, market observations, audit records, and alert state. Transaction history is retained;
+fine-grained prices are retained seven days and hourly/coarser prices ninety days.
+Whole-market latest quotes and aggregates are replaced, not accumulated indefinitely.
+Detailed history is accumulated only for holdings, watched items, favorites, and analyzed candidates.
+
+Daily SQLite-consistent backups keep seven daily copies under `BACKUP_DIR`. For a manual backup
+or transaction export, including voided entries:
+
+```sh
+python -m app backup --output /path/to/backups/osrs-before-change.sqlite3
+python -m app export --output /path/to/exports/trades.csv
 ```
-profit_margin = ((avg_high_price - avg_low_price - (0.02 * avg_high_price)) / avg_low_price) * 100
-```
 
-The precomputed results are stored in PostgreSQL for fast retrieval via REST API endpoints.
+Existing output files are not overwritten. Use the backup command rather than copying a running
+SQLite file: committed changes can also be in its WAL journal. Keep an additional backup outside
+your PC/container for protection against disk loss.
 
-**Simple Explanation:**
-Every 5 minutes, the app checks the prices of OSRS items you're tracking. It calculates how much profit you could make by buying low and selling high (after accounting for the 2% Grand Exchange tax). These profit calculations are saved so the API can show you the best opportunities instantly.
+To restore or move hosts: stop the bot, make a backup, move the backup to the destination's
+`DB_PATH`, configure credentials there, then start **one** instance. Do not copy old `-wal`, `-shm`,
+or lock files with a backup snapshot. Keep the original database until the new instance is verified.
+There is no synchronization between local and hosted instances.
 
-## Features
+## Container and later hosting
 
-- **Real-time Price Tracking**: Fetches latest GE prices every 5 minutes
-- **Precomputed Arbitrage**: All profit calculations done in advance for fast API responses
-- **Historical Data**: Stores all price snapshots for trend analysis
-- **Null Price Handling**: Gracefully handles missing data from the API
-- **Admin Controls**: Protected endpoints for adding/removing items
-- **Docker Ready**: Full containerization for easy deployment
-- **Production Grade**: Async/await, proper error handling, logging, and testing
-
-## API Endpoints (Planned)
-
-### Public Endpoints
-
-- `GET /api/v1/items` - List all tracked items
-- `GET /api/v1/arbitrage/top` - Top arbitrage opportunities
-- `GET /api/v1/arbitrage/{item_id}` - Arbitrage history for specific item
-- `GET /api/v1/items/{item_id}/history` - Price history for specific item
-
-### Admin Endpoints (require X-API-Key header)
-
-- `POST /api/v1/items` - Add item to tracking
-- `DELETE /api/v1/items/{item_id}` - Remove item from tracking
-- `POST /api/v1/admin/refresh` - Manually trigger price fetch
-
-## Technology Stack
-
-- **Backend**: FastAPI (Python 3.11)
-- **Database**: PostgreSQL with asyncpg
-- **ORM**: SQLAlchemy (async)
-- **Migrations**: Alembic
-- **Background Jobs**: APScheduler
-- **Testing**: pytest + pytest-asyncio
-- **Deployment**: Docker + Render
-
-## Initial Tracked Items
-
-The service starts tracking these 5 items by default:
-
-- Coal (ID: 453)
-- Iron ore (ID: 440)
-- Iron bar (ID: 2351)
-- Mithril ore (ID: 447)
-- Mithril bar (ID: 2359)
-
-More items can be added via the API once it's running.
-
-## Development Commands
-
-### Docker Commands
-
-```bash
-# Start services
-docker compose up
-
-# Start in background
-docker compose up -d
-
-# View logs
-docker compose logs -f api
-
-# Rebuild after code changes
-docker compose up --build
-
-# Stop services
+```sh
+docker compose up --build -d
+docker compose logs -f bot
 docker compose down
 ```
 
-### Database Commands
+Compose uses a named `bot_data` volume mounted at `/data`; the container runs as an unprivileged
+user. `.env` is supplied at runtime and excluded from the image. Do not use `docker compose down -v`
+unless you intend to delete the database and backups. Avoid running the local process and container
+simultaneously: each may have its own database lock while using the same Discord application.
 
-```bash
-# Create new migration
-alembic revision --autogenerate -m "description"
+To back up a running Compose bot:
 
-# Apply migrations
-alembic upgrade head
-
-# Rollback migration
-alembic downgrade -1
-
-# View migration history
-alembic history
+```sh
+docker compose exec bot python -m app backup --output /data/manual-backup.sqlite3
+# Copy the backup out using the container name/ID shown by docker compose ps.
+docker compose cp bot:/data/manual-backup.sqlite3 ./manual-backup.sqlite3
 ```
 
-### Testing Commands
+A future host needs an always-running **worker/container**, outbound HTTPS/WebSocket access,
+a persistent writable disk mounted at `/data`, and environment secrets. There is no HTTP port
+or health endpoint. A sleeping/ephemeral web service is unsuitable for continuous monitoring.
+The obsolete Render API/PostgreSQL blueprint has been removed; no deployment is performed.
 
-```bash
-# Run all tests
-pytest
+For optional Linux/WSL startup, customize [the user service example](deploy/osrs-flips.service.example),
+copy it to `~/.config/systemd/user/osrs-flips.service`, then run:
 
-# Run with verbose output
-pytest -v
-
-# Run specific test
-pytest tests/test_services/test_arbitrage_service.py
-
-# Run with coverage
-pytest --cov=app
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now osrs-flips
+journalctl --user -u osrs-flips -f
 ```
 
-## Deployment
+WSL must have systemd enabled. Closing/suspending Windows or stopping WSL interrupts monitoring.
+User-service startup after login is sufficient; no system-wide service or unattended hosting is assumed.
 
-This project is configured for deployment on Render using Docker:
+## Development and verification
 
-1. Connect your GitHub repository to Render
-2. Render will automatically detect the `render.yaml` configuration
-3. Set the `ADMIN_API_KEY` environment variable in Render dashboard
-4. Deploy! Render will build the Docker image and run migrations automatically
-
-The database will be automatically provisioned via Render's PostgreSQL service.
-
-### Production Deployment Checklist
-
-**IMPORTANT: Before deploying to production, update these environment variables:**
-
-1. **CORS_ORIGINS** - Restrict to your frontend domain
-   - Dev: `["*"]` (allows all origins)
-   - Prod: `["https://your-frontend-domain.com"]`
-   - Why: Prevents unauthorized websites from accessing your API
-
-2. **ADMIN_API_KEY** - Use a secure random key
-   - Dev: `dev-admin-key-change-in-production`
-   - Prod: Generate a cryptographically secure random string
-   - Why: Protects admin endpoints from unauthorized access
-
-3. **LOG_LEVEL** - Reduce verbosity
-   - Dev: `DEBUG`
-   - Prod: `INFO` or `WARNING`
-   - Why: Reduces log noise and prevents information leakage
-
-4. **Database credentials** - Ensure strong passwords
-   - Render's managed PostgreSQL uses secure credentials by default
-
-## System Architecture
-
-### Component Diagram
-
-```mermaid
-graph TB
-    subgraph "External Services"
-        RuneLite[RuneLite/OSRS Wiki API<br/>Real-time Prices]
-    end
-
-    subgraph "FastAPI Application"
-        API[FastAPI Routes<br/>/api/v1/...]
-        Auth[Admin Auth<br/>X-API-Key]
-        Deps[Dependencies<br/>Pagination, Filters]
-
-        subgraph "Service Layer"
-            ItemSvc[Item Service<br/>CRUD Operations]
-            PriceSvc[Price Service<br/>Snapshot Management]
-            ArbSvc[Arbitrage Service<br/>Profit Calculations]
-            APISvc[RuneLite Client<br/>HTTP Requests]
-        end
-
-        subgraph "Background Jobs"
-            Scheduler[APScheduler<br/>5-minute intervals]
-            Poller[Price Poller<br/>Fetch & Compute]
-        end
-
-        subgraph "Data Layer"
-            Models[SQLAlchemy Models<br/>Async ORM]
-            Schemas[Pydantic Schemas<br/>Validation]
-        end
-    end
-
-    subgraph "Database"
-        PG[(PostgreSQL<br/>tracked_items<br/>price_snapshots<br/>arbitrage_snapshots)]
-    end
-
-    User[Users] -->|HTTP Requests| API
-    API --> Auth
-    API --> Deps
-    API --> ItemSvc
-    API --> PriceSvc
-    API --> ArbSvc
-
-    ItemSvc --> Models
-    PriceSvc --> Models
-    ArbSvc --> Models
-
-    Scheduler -->|Triggers| Poller
-    Poller --> APISvc
-    Poller --> PriceSvc
-    Poller --> ArbSvc
-
-    APISvc -->|GET /1m, /5m| RuneLite
-
-    Models -->|AsyncPG| PG
+```sh
+python -m pip install -r requirements-dev.txt -c requirements.lock
+python -m pytest
+ruff check app tests
+ruff format --check app tests
+# Explicit opt-in read-only live provider check:
+python -m app check-api
 ```
 
-### Data Flow Diagram
+Tests use temporary SQLite databases, captured-shape fixtures, mocked HTTP, and mocked Discord.
+They never require a token. Database tests need normal OS thread/asyncio support; restrictive
+execution sandboxes may prevent aiosqlite's worker callbacks from waking the event loop.
+`requirements.lock` records the validated runtime and development dependency versions.
 
-```mermaid
-sequenceDiagram
-    participant Scheduler as APScheduler
-    participant Poller as Price Poller
-    participant API as RuneLite API
-    participant PriceSvc as Price Service
-    participant ArbSvc as Arbitrage Service
-    participant DB as PostgreSQL
-
-    Note over Scheduler: Every 5 minutes
-    Scheduler->>Poller: Trigger poll_prices()
-
-    Poller->>DB: Get all tracked items
-    DB-->>Poller: [item_ids]
-
-    Poller->>API: GET /1m prices
-    API-->>Poller: 1m price data
-
-    Poller->>API: GET /5m prices
-    API-->>Poller: 5m price data
-
-    loop For each tracked item
-        Poller->>PriceSvc: Store 1m snapshot
-        PriceSvc->>DB: INSERT price_snapshot
-
-        Poller->>PriceSvc: Store 5m snapshot
-        PriceSvc->>DB: INSERT price_snapshot
-
-        Poller->>ArbSvc: Compute arbitrage (1m)
-        ArbSvc->>DB: Get latest non-null prices
-        DB-->>ArbSvc: price data
-        ArbSvc->>ArbSvc: Calculate margin
-        ArbSvc->>DB: INSERT arbitrage_snapshot
-
-        Poller->>ArbSvc: Compute arbitrage (5m)
-        ArbSvc->>DB: INSERT arbitrage_snapshot
-    end
-
-    Poller-->>Scheduler: Poll complete
-```
-
-### Database Schema (Entity Relationship)
-
-```mermaid
-erDiagram
-    TRACKED_ITEMS ||--o{ PRICE_SNAPSHOTS : has
-    TRACKED_ITEMS ||--o{ ARBITRAGE_SNAPSHOTS : has
-
-    TRACKED_ITEMS {
-        int id PK
-        int item_id UK "OSRS item ID"
-        string item_name
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    PRICE_SNAPSHOTS {
-        int id PK
-        int item_id FK "ON DELETE CASCADE"
-        string window "1m or 5m"
-        int avg_high_price "nullable"
-        int avg_low_price "nullable"
-        int high_price_volume "nullable"
-        int low_price_volume "nullable"
-        timestamp fetched_at
-    }
-
-    ARBITRAGE_SNAPSHOTS {
-        int id PK
-        int item_id FK "ON DELETE CASCADE"
-        string window "1m or 5m"
-        int avg_high_price
-        int avg_low_price
-        int spread "high - low"
-        int tax "0.02 * high"
-        int margin_after_tax "spread - tax"
-        float percent_margin "(margin/low)*100"
-        int high_volume "nullable"
-        int low_volume "nullable"
-        timestamp computed_at
-    }
-```
-
-**Technical Explanation:**
-The system uses a layered architecture with clear separation of concerns. The API layer handles HTTP requests and validation, the service layer implements business logic, and the data layer manages database operations. Background jobs run independently to fetch and process price data.
-
-**Simple Explanation:**
-Think of it like a restaurant: The API layer is the waiter taking orders, the service layer is the kitchen preparing food, and the database is the pantry storing ingredients. The background scheduler is like a delivery truck that brings fresh supplies every 5 minutes.
-
-## Changelog
-
-### 2025-12-10
-
-- **Phase 1-5 Complete**: Core infrastructure and service layer implemented
-- Set up complete project structure with Docker and docker-compose
-- Implemented database models: TrackedItem, PriceSnapshot, ArbitrageSnapshot
-- Configured Alembic for async migrations with auto-detection
-- Created Pydantic schemas for request/response validation
-- Built RuneLite API client with error handling and null data support
-- Added data seeding utility for 5 initial items
-- Configured for Render deployment with render.yaml
-- Updated comprehensive documentation with UML diagrams
-- **Database Setup Complete**:
-  - Fixed CORS_ORIGINS env var format for pydantic list parsing
-  - Resolved PostgreSQL port conflict (stopped local instance)
-  - Generated and applied initial database migration
-  - Created all tables with proper indexes and foreign key relationships
-  - Successfully seeded 5 initial items (Coal, Iron ore, Iron bar, Mithril ore, Mithril bar)
-- **Phase 5 - Services Complete**:
-  - Custom exception classes for error handling (ItemAlreadyExistsError, ItemNotFoundError, etc.)
-  - item_service.py: CRUD operations for tracked items
-  - price_service.py: Price snapshot management with null handling
-  - arbitrage_service.py: Profit margin calculations with 2% GE tax
-  - All services use async/await with exception-based error handling
-  - Query limits implemented (default 10-100, max 1000)
-- **Production Notes**: Added production deployment checklist with security reminders for CORS, API keys, and logging
-
-### 2025-12-09
-
-- Initial project setup
-- Created project documentation (README.md and CLAUDE.md)
-- Defined project scope and goals
+Before daily use, test the commands in your private server, exercise partial sales and corrections,
+check charts, observe a simulated target/rearm, and restart the bot. A live play-session smoke test
+requires your credentials and in-game observations; passing offline tests does not substitute for it.
